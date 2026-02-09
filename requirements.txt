@@ -1,5 +1,28 @@
+# =============================================================================
+# Reverse Document Generator — Flask Web Server
+# Production Dependency Manifest
+# =============================================================================
+
+# Private Artifact Registry for blitzy-platform-shared package
 --extra-index-url https://us-east1-python.pkg.dev/blitzy-platform-stage/python-us-east1/simple/
+
+# ---------------------------------------------------------------------------
+# Private Platform Library
+# Bundles 172 transitive packages including: LangGraph 1.0.8, LangChain suite,
+# Anthropic SDK, OpenAI SDK, Google GenAI SDK, Voyage AI SDK, Neo4j driver,
+# Google Cloud Storage, Google Cloud Pub/Sub, Pydantic v2, httpx, tenacity,
+# structlog, LangSmith, thefuzz, and MCP framework.
+# ---------------------------------------------------------------------------
 blitzy-platform-shared==0.0.542
+
+# ---------------------------------------------------------------------------
+# Flask Web Framework and Supporting Packages
+# ---------------------------------------------------------------------------
+# Core WSGI web application framework (Python >= 3.9)
 Flask==3.1.2
+
+# Production-grade WSGI HTTP server for Flask deployment
 gunicorn==23.0.0
+
+# Environment variable loading from .env files (Flask dotenv integration)
 python-dotenv==1.1.0
