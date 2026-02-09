@@ -1,7 +1,28 @@
+# =============================================================================
+# Reverse Document Generator — Flask Web Server
+# Development & Testing Dependency Manifest
+# =============================================================================
+
+# Inherit all production dependencies (Flask, gunicorn, blitzy-platform-shared)
 -r requirements.txt
+
+# ---------------------------------------------------------------------------
+# Testing Framework
+# ---------------------------------------------------------------------------
+# Core test framework
 pytest==8.3.4
+
+# Flask testing utilities — provides test client fixtures and helpers
 pytest-flask==1.3.0
+
+# Coverage reporting for pytest
 pytest-cov==6.0.0
-pytest-asyncio==0.24.0
+
+# ---------------------------------------------------------------------------
+# Code Quality Tools
+# ---------------------------------------------------------------------------
+# Code formatting (PEP 8 compliant, deterministic)
 black==24.10.0
+
+# Linting and static analysis
 flake8==7.1.1
