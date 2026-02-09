@@ -1,0 +1,221 @@
+# =============================================================================
+# Docker Compose — Reverse Document Generator (Local Development)
+# =============================================================================
+# Defines the complete local development stack for the Flask-based Reverse
+# Document Generator server. Two services are orchestrated:
+#
+#   1. app    — The Flask web server built from the local Dockerfile, exposing
+#               REST API endpoints for document generation and updates.
+#   2. neo4j  — A Neo4j Community Edition container providing the code graph
+#               database used by CodeGraphBuilder for repository analysis.
+#
+# Usage:
+#   # Start all services (builds app image on first run):
+#   docker-compose up --build
+#
+#   # Start in detached mode:
+#   docker-compose up -d --build
+#
+#   # View logs:
+#   docker-compose logs -f app
+#
+#   # Stop all services and remove volumes:
+#   docker-compose down -v
+#
+# Prerequisites:
+#   - Copy .env.example to .env and populate with real API keys:
+#       cp .env.example .env
+#   - Docker and Docker Compose installed
+#   - Google Cloud credentials available for Artifact Registry authentication
+#     during the Docker build phase (for blitzy-platform-shared package)
+#
+# Note: External cloud services (Anthropic, OpenAI, Voyage AI, GCS, Pub/Sub,
+# GitHub, Admin Service, LangSmith) require valid API keys configured in the
+# .env file. Only Neo4j is fully containerized for local development.
+# =============================================================================
+
+version: "3.8"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Flask Application Service
+  # ---------------------------------------------------------------------------
+  # Builds the Reverse Document Generator from the local Dockerfile and runs
+  # the Flask development server with hot-reload enabled. Source code is mounted
+  # as a volume so that code changes are reflected without rebuilding the image.
+  # ---------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # BuildKit secrets for authenticating against Google Artifact Registry
+      # during pip install of blitzy-platform-shared==0.0.542.
+      # Requires: DOCKER_BUILDKIT=1 and a valid credentials.json file.
+      secrets:
+        - gcp_credentials
+    container_name: reverse-doc-generator-app
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount source code for development hot-reload. Changes to Python files
+      # are picked up by the Flask development server without rebuilding.
+      - .:/app
+      # Prevent the container's installed packages from being overwritten
+      # by the host volume mount (node_modules and Python site-packages).
+      - /app/__pycache__
+    env_file:
+      # Load all environment variables from the local .env file.
+      # Developers must copy .env.example to .env and fill in real values.
+      - .env
+    environment:
+      # -----------------------------------------------------------------------
+      # Flask-Specific Configuration (overrides for development)
+      # -----------------------------------------------------------------------
+      # Flask application entry point for both `flask run` and Gunicorn
+      FLASK_APP: "app.main:application"
+      # Development mode enables debug logging, auto-reload, and verbose errors
+      FLASK_ENV: "development"
+      # Enable Flask debug mode for development (auto-reload + interactive debugger)
+      FLASK_DEBUG: "1"
+
+      # -----------------------------------------------------------------------
+      # Neo4j — Override to point to the Docker Compose neo4j service container
+      # instead of localhost (as configured in .env.example defaults).
+      # The hostname "neo4j" resolves to the neo4j service container via
+      # Docker Compose's internal DNS on the shared network.
+      # -----------------------------------------------------------------------
+      NEO4J_SERVER: "neo4j://neo4j:7687"
+      NEO4J_USERNAME: "neo4j"
+      NEO4J_PASSWORD: "password"
+
+      # -----------------------------------------------------------------------
+      # Python Runtime Settings
+      # -----------------------------------------------------------------------
+      # Unbuffered stdout/stderr for real-time log output in Docker
+      PYTHONUNBUFFERED: "1"
+      # Skip .pyc bytecode generation to reduce filesystem writes
+      PYTHONDONTWRITEBYTECODE: "1"
+      # Disable tokenizer parallelism to avoid deadlocks in forked processes
+      TOKENIZERS_PARALLELISM: "false"
+
+      # -----------------------------------------------------------------------
+      # Chrome / MCP Bridge Settings
+      # -----------------------------------------------------------------------
+      # Suppress D-Bus warnings in containerized environment
+      DBUS_SESSION_BUS_ADDRESS: "/dev/null"
+      # Disable Chrome sandbox for containerized execution
+      CHROME_NO_SANDBOX: "1"
+      CHROME_DEVEL_SANDBOX: "0"
+
+    # Use Flask development server instead of Gunicorn for hot-reload support.
+    # Override the Dockerfile CMD which starts Gunicorn for production.
+    command: >
+      flask run
+      --host=0.0.0.0
+      --port=8080
+      --reload
+      --debugger
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+    networks:
+      - reverse-doc-gen-network
+
+  # ---------------------------------------------------------------------------
+  # Neo4j Code Graph Database
+  # ---------------------------------------------------------------------------
+  # Provides the graph database used by CodeGraphBuilder for repository code
+  # analysis. The code graph stores file structures, function signatures,
+  # class hierarchies, and semantic embeddings for AI-powered context gathering.
+  #
+  # Ports:
+  #   7474 — Neo4j Browser (web UI for graph inspection and Cypher queries)
+  #   7687 — Bolt protocol (used by the Python neo4j driver and CodeGraphBuilder)
+  #
+  # Authentication credentials match the defaults in .env.example so that
+  # the app service can connect without additional configuration.
+  # ---------------------------------------------------------------------------
+  neo4j:
+    image: neo4j:5-community
+    container_name: reverse-doc-generator-neo4j
+    ports:
+      # Neo4j Browser — accessible at http://localhost:7474 for graph inspection
+      - "7474:7474"
+      # Bolt protocol — used by the app service for code graph operations
+      - "7687:7687"
+    environment:
+      # Authentication credentials (must match app service NEO4J_USERNAME/PASSWORD)
+      NEO4J_AUTH: "neo4j/password"
+      # Memory configuration optimized for local development
+      # Heap size: initial and max allocation for the Neo4j JVM
+      NEO4J_server_memory_heap_initial__size: "512m"
+      NEO4J_server_memory_heap_max__size: "1G"
+      # Page cache: memory allocated for caching graph data pages
+      NEO4J_server_memory_pagecache_size: "512m"
+      # Enable APOC plugin for extended graph operations (used by neo4j-graphrag)
+      NEO4J_PLUGINS: '["apoc"]'
+      # Accept the Neo4j license agreement for community edition
+      NEO4J_ACCEPT_LICENSE_AGREEMENT: "yes"
+    volumes:
+      # Persist Neo4j data across container restarts so code graphs survive
+      # docker-compose stop/start cycles. Use `docker-compose down -v` to
+      # fully reset the database.
+      - neo4j_data:/data
+      # Persist Neo4j logs for debugging connection or query issues
+      - neo4j_logs:/logs
+    healthcheck:
+      # Verify Neo4j is accepting Bolt connections before the app service starts.
+      # Uses cypher-shell to execute a trivial query as a connectivity check.
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p password 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      start_period: 30s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - reverse-doc-gen-network
+
+# =============================================================================
+# Named Volumes
+# =============================================================================
+# Persistent volumes for Neo4j data and logs. These survive container restarts
+# but are removed with `docker-compose down -v`.
+# =============================================================================
+volumes:
+  neo4j_data:
+    driver: local
+  neo4j_logs:
+    driver: local
+
+# =============================================================================
+# Networks
+# =============================================================================
+# Custom bridge network for inter-service communication. The app service
+# resolves the "neo4j" hostname to the Neo4j container's IP address via
+# Docker's built-in DNS. This network is isolated from other Docker
+# Compose projects running on the same host.
+# =============================================================================
+networks:
+  reverse-doc-gen-network:
+    driver: bridge
+    name: reverse-doc-gen-network
+
+# =============================================================================
+# Secrets
+# =============================================================================
+# Google Cloud credentials for authenticating against the private Artifact
+# Registry during the Docker build phase. Required for installing the
+# blitzy-platform-shared==0.0.542 private package.
+#
+# Usage: Place your GCP service account key at ./credentials.json
+# =============================================================================
+secrets:
+  gcp_credentials:
+    file: ./credentials.json
