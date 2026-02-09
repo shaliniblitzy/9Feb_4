@@ -31,10 +31,10 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
-from blitzy_utils.logger import get_logger
+from blitzy_utils.logger import BlitzyLogger
 
 # Module-level structured logger for job management operations
-logger = get_logger(__name__)
+logger = BlitzyLogger(__name__)
 
 
 class JobStatus(str, Enum):
