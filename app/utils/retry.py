@@ -68,7 +68,7 @@ SUPPLEMENTARY_RETRYABLE_EXCEPTIONS: Tuple[Type[BaseException], ...] = (
                             # ConnectionAbortedError, BrokenPipeError as subclasses)
     TimeoutError,           # Operation timeouts (socket, HTTP, database connections)
     ConnectionResetError,   # Remote end forcibly closed the connection
-    ConnectionAbortedError, # Connection attempt aborted by the local host
+    ConnectionAbortedError,  # Connection attempt aborted by the local host
     BrokenPipeError,        # Write to a closed pipe or socket
     OSError,                # Low-level OS/socket errors (DNS resolution failures,
                             # socket bind errors, file descriptor exhaustion)
