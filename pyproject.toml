@@ -1,0 +1,32 @@
+[project]
+name = "archie-job-reverse-document-generator"
+version = "1.0.0"
+description = "AI-powered Reverse Document Generator Flask Server"
+requires-python = ">=3.12"
+
+[tool.black]
+line-length = 120
+target-version = ["py312"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+]
+asyncio_mode = "auto"
+
+[tool.flake8]
+max-line-length = 120
+exclude = [".git", "__pycache__", "venv", ".eggs"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 70

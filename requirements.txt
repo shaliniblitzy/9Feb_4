@@ -1,0 +1,5 @@
+--extra-index-url https://us-east1-python.pkg.dev/blitzy-platform-stage/python-us-east1/simple/
+blitzy-platform-shared==0.0.542
+Flask==3.1.2
+gunicorn==23.0.0
+python-dotenv==1.1.0
