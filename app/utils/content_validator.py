@@ -32,12 +32,12 @@ Notes:
 import re
 from typing import Tuple, Optional
 
-from blitzy_utils.logger import get_logger
+from blitzy_utils.logger import BlitzyLogger
 
 # ---------------------------------------------------------------------------
 # Module-level logger for structured observability across all 5 stages
 # ---------------------------------------------------------------------------
-logger = get_logger(__name__)
+logger = BlitzyLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Pre-compiled regex patterns — compiled once at module load for performance
