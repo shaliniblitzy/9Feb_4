@@ -9,13 +9,21 @@ engine and the Admin Service backend.
 Endpoints Consumed:
     1. **POST /v1/attachments** — Downloads user-uploaded attachments (images, documents)
        for inclusion in LLM context prompts during document generation (Feature F-006).
-    2. **get_project_build_info()** — Retrieves project build metadata (framework, language,
-       infrastructure details) used in the setup node for project context (Feature F-011).
-    3. **download_all_environments_files()** — Downloads environment configuration files
-       for the project, used during context gathering (Feature F-011).
+    2. **GET /v1/projects/{project_id}/build-info** — Retrieves project build metadata
+       (framework, language, infrastructure details) used in the setup node for project
+       context (Feature F-011).
+    3. **GET /v1/projects/{project_id}/environments** — Downloads environment configuration
+       files for the project, used during context gathering (Feature F-011).
     4. **get_figma_info_for_tech_spec()** — Retrieves Figma design asset metadata including
        availability status, attachment list, and Personal Access Token (PAT) used to
        determine if the MCP bridge should be initialized (Feature F-005).
+
+ServiceClient Usage Pattern:
+    The ``ServiceClient`` from ``blitzy_utils`` auto-discovers services from environment
+    variables with the ``SERVICE_URL_`` prefix. For instance, the ``SERVICE_URL_ADMIN``
+    env var is automatically registered as the ``"admin"`` service. Calls use the pattern
+    ``service_client.get("admin", "/v1/endpoint")`` where the first argument is the
+    registered service name and the second is the endpoint path.
 
 Error Handling Strategy:
     - Endpoints 1-3: Each call is wrapped in try/except. Errors are logged with full
@@ -39,6 +47,14 @@ from typing import Any, Dict, List, Optional
 from blitzy_utils.figma import get_figma_info_for_tech_spec
 from blitzy_utils.logger import BlitzyLogger
 from blitzy_utils.service_client import ServiceClient
+
+# ---------------------------------------------------------------------------
+# The service name used when making HTTP calls via ServiceClient.
+# This corresponds to the environment variable SERVICE_URL_ADMIN, where the
+# ServiceClient strips the prefix "SERVICE_URL_" and lowercases the remainder
+# to derive the service name "admin".
+# ---------------------------------------------------------------------------
+_ADMIN_SERVICE_NAME = "admin"
 
 # ---------------------------------------------------------------------------
 # Module-level structured logger for Admin Service operations.
@@ -113,14 +129,14 @@ class AdminService:
         """
         Initialize the AdminService with a Flask application's configuration.
 
-        Loads the Admin Service base URL from the Flask app config and creates
-        the ServiceClient instance used for all subsequent HTTP operations.
+        Creates the ``ServiceClient`` instance which auto-discovers registered
+        services from environment variables with the ``SERVICE_URL_`` prefix.
+        The ``SERVICE_URL_ADMIN`` env var is automatically registered as the
+        ``"admin"`` service, enabling calls like
+        ``service_client.get("admin", "/v1/endpoint")``.
+
         This method is idempotent — calling it multiple times reconfigures
         the service with the latest app configuration.
-
-        The SERVICE_URL_ADMIN config value maps to the environment variable of the
-        same name, configured in ``app/config.py``. Example value:
-        ``https://admin.blitzy-platform.internal/api``
 
         Args:
             app: Flask application instance whose ``config`` dict contains
@@ -132,11 +148,13 @@ class AdminService:
         """
         self.service_url = app.config.get("SERVICE_URL_ADMIN", "")
 
-        # Initialize the ServiceClient with the Admin Service base URL.
-        # ServiceClient provides .get() and .post() methods for HTTP operations
-        # with built-in timeout handling and response parsing.
+        # Initialize the ServiceClient with the default SERVICE_URL_ prefix.
+        # The ServiceClient auto-registers services from environment variables:
+        #   SERVICE_URL_ADMIN -> service name "admin"
+        #   SERVICE_URL_SECRETS -> service name "secrets"
+        # Methods use the pattern: service_client.get("admin", "/v1/endpoint")
         if self.service_url:
-            self.service_client = ServiceClient(self.service_url)
+            self.service_client = ServiceClient()
             logger.info(
                 "AdminService initialized successfully",
                 service_url_configured=True,
@@ -200,24 +218,29 @@ class AdminService:
             )
 
             # POST the attachment IDs to /v1/attachments to retrieve their data.
-            # The Admin Service returns a list of attachment objects matching
-            # the requested IDs.
+            # ServiceClient.post() returns an httpx.Response; the first argument
+            # is the registered service name ("admin"), derived from env var
+            # SERVICE_URL_ADMIN, and the second is the endpoint path.
             response = self.service_client.post(
+                _ADMIN_SERVICE_NAME,
                 "/v1/attachments",
                 json={"attachment_ids": attachment_ids},
             )
 
+            # Deserialize the httpx.Response JSON body into a Python object.
+            response_data = response.json()
+
             # Normalize response — ensure we always return a list even if the
             # Admin Service returns a dict wrapper or unexpected format.
-            if isinstance(response, list):
-                attachments = response
-            elif isinstance(response, dict) and "attachments" in response:
-                attachments = response["attachments"]
-            elif isinstance(response, dict) and "data" in response:
-                attachments = response["data"]
+            if isinstance(response_data, list):
+                attachments = response_data
+            elif isinstance(response_data, dict) and "attachments" in response_data:
+                attachments = response_data["attachments"]
+            elif isinstance(response_data, dict) and "data" in response_data:
+                attachments = response_data["data"]
             else:
                 # Fallback: wrap the response in a list if it's a single object
-                attachments = [response] if response else []
+                attachments = [response_data] if response_data else []
 
             logger.info(
                 "Successfully fetched attachments",
@@ -278,14 +301,18 @@ class AdminService:
             )
 
             # Retrieve build info via GET request with project_id as path parameter.
-            # The ServiceClient.get() method handles URL construction, HTTP execution,
-            # and response deserialization.
+            # ServiceClient.get() returns an httpx.Response; the first argument is
+            # the registered service name ("admin") and the second is the endpoint.
             response = self.service_client.get(
+                _ADMIN_SERVICE_NAME,
                 f"/v1/projects/{project_id}/build-info",
             )
 
+            # Deserialize the httpx.Response JSON body into a Python dict.
+            response_data = response.json()
+
             # Normalize response to dict
-            build_info = response if isinstance(response, dict) else {}
+            build_info = response_data if isinstance(response_data, dict) else {}
 
             logger.info(
                 "Successfully fetched project build info",
@@ -349,14 +376,18 @@ class AdminService:
             )
 
             # Retrieve all environment configuration files for the project.
-            # The Admin Service returns a dictionary mapping environment names
-            # to their respective configuration data.
+            # ServiceClient.get() returns an httpx.Response; the first argument
+            # is the registered service name ("admin") and the second is the endpoint.
             response = self.service_client.get(
+                _ADMIN_SERVICE_NAME,
                 f"/v1/projects/{project_id}/environments",
             )
 
+            # Deserialize the httpx.Response JSON body into a Python dict.
+            response_data = response.json()
+
             # Normalize response to dict
-            env_files = response if isinstance(response, dict) else {}
+            env_files = response_data if isinstance(response_data, dict) else {}
 
             logger.info(
                 "Successfully downloaded environment files",
