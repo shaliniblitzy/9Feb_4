@@ -44,11 +44,11 @@ from tenacity import (
 )
 
 from blitzy_platform_shared.common.consts import RETRYABLE_EXCEPTIONS
-from blitzy_utils.logger import get_logger
+from blitzy_utils.logger import BlitzyLogger
 
 # Structured logger for retry module operations including retry tracking,
 # exception classification, and state update logging
-logger = get_logger(__name__)
+logger = BlitzyLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Supplementary Retryable Exceptions
